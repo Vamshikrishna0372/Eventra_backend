@@ -21,6 +21,13 @@ scheduler = AsyncIOScheduler()
 
 app = FastAPI(title="Eventra API")
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("eventra")
+
 # Setup CORS
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +92,7 @@ app.include_router(ticket_router)
 
 @app.on_event("startup")
 async def startup_db():
+    logger.info("Initializing Eventra Database and Services...")
     from app.database.connection import get_database, client
     # Initial setup if required. client is successfully created already.
     # Populate categories if not exists

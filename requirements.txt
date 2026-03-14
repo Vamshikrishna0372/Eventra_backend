@@ -9,3 +9,8 @@ python-jose[cryptography]
 pydantic
 pydantic[email]
 google-auth
+apscheduler
+razorpay
+python-multipart
+sendgrid
+pydantic-settings
