@@ -14,3 +14,4 @@ razorpay
 python-multipart
 sendgrid
 pydantic-settings
+httpx

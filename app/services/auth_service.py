@@ -5,10 +5,10 @@ from app.schemas.user_schema import UserCreate, UserLogin
 from app.middleware.auth_middleware import get_password_hash, verify_password, create_access_token
 from bson import ObjectId
 import os
-from google.oauth2 import id_token
-from google.auth.transport import requests
+import httpx
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 class AuthService:
     @staticmethod
@@ -46,20 +46,31 @@ class AuthService:
 
     @staticmethod
     async def google_login_user(token: str):
+        """
+        Accepts a Google OAuth2 access token (from useGoogleLogin implicit flow).
+        Fetches user info from Google's UserInfo endpoint to verify and get profile.
+        """
         try:
-            # Verify Google Token
-            idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
-            
-            # Extract info
-            email = idinfo['email']
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    GOOGLE_USERINFO_URL,
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid Google access token")
+
+            idinfo = resp.json()
+            email = idinfo.get('email')
+            if not email:
+                raise HTTPException(status_code=401, detail="Could not retrieve email from Google")
+
             name = idinfo.get('name', email.split('@')[0])
             picture = idinfo.get('picture')
-            
+
             db = get_database()
             user = await db["users"].find_one({"email": email})
-            
+
             if not user:
-                # Create new user
                 new_user_data = {
                     "name": name,
                     "email": email,
@@ -70,19 +81,26 @@ class AuthService:
                 new_user = UserModel(**new_user_data)
                 result = await db["users"].insert_one(new_user.model_dump(by_alias=True, exclude_none=True))
                 user = await db["users"].find_one({"_id": result.inserted_id})
-            
-            # Generate JWT
+            else:
+                # Update picture if changed
+                if picture and user.get("picture") != picture:
+                    await db["users"].update_one(
+                        {"_id": user["_id"]},
+                        {"$set": {"picture": picture}}
+                    )
+
             access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
             user["id"] = str(user.pop("_id"))
-            
+
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
                 "user": user
             }
-        except ValueError:
-            # Invalid token
-            raise HTTPException(status_code=401, detail="Invalid Google token")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Google authentication failed: {str(e)}")
 
     @staticmethod
     async def get_profile(user_id: str):
