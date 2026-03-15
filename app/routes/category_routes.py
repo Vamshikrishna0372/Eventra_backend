@@ -13,6 +13,9 @@ async def get_categories():
     categories = await db["categories"].find().to_list(100)
     for cat in categories:
         cat["id"] = str(cat.pop("_id"))
+        # Get count of events in this category
+        count = await db["events"].count_documents({"category": {"$regex": f"^{cat['name']}$", "$options": "i"}})
+        cat["eventCount"] = count
     return {"success": True, "message": "Categories retrieved", "data": categories}
 
 @router.post("/", dependencies=[Depends(require_admin)])
@@ -23,3 +26,14 @@ async def create_category(cat_data: CategoryCreate):
     created = await db["categories"].find_one({"_id": res.inserted_id})
     created["id"] = str(created.pop("_id"))
     return {"success": True, "message": "Category created", "data": created}
+
+@router.delete("/{category_id}", dependencies=[Depends(require_admin)])
+async def delete_category(category_id: str):
+    db = get_database()
+    try:
+        res = await db["categories"].delete_one({"_id": ObjectId(category_id)})
+        if res.deleted_count == 0:
+            return {"success": False, "message": "Category not found"}
+        return {"success": True, "message": "Category deleted"}
+    except:
+        return {"success": False, "message": "Invalid ID"}

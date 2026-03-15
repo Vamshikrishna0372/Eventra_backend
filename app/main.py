@@ -92,6 +92,9 @@ async def startup_db():
         # 1. Create Indexes for performance and uniqueness
         await db["users"].create_index("email", unique=True)
         await db["events"].create_index("categoryId")
+        await db["events"].create_index("category")
+        await db["events"].create_index("createdAt", direction=-1)
+        await db["events"].create_index("date")
         await db["registrations"].create_index("userId")
         await db["registrations"].create_index("eventId")
         await db["payments"].create_index("userId")
@@ -124,7 +127,7 @@ async def startup_db():
                 {
                     "title": "AI & Machine Learning Workshop",
                     "description": "Deep dive into neural networks and data science applications in the modern world.",
-                    "date": "2026-04-15",
+                    "date": "2026-04-15T10:00:00",
                     "time": "10:00 AM",
                     "venue": "CSE Seminar Hall",
                     "category": "Technical",
@@ -140,7 +143,7 @@ async def startup_db():
                 {
                     "title": "Web Development Bootcamp",
                     "description": "Learn Full Stack development with React and Node.js in this intensive 3-day bootcamp.",
-                    "date": "2026-04-20",
+                    "date": "2026-04-20T09:00:00",
                     "time": "09:00 AM",
                     "venue": "Computer Lab 3",
                     "category": "Technical",

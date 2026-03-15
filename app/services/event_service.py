@@ -1,3 +1,4 @@
+from typing import Optional, Any
 from fastapi import HTTPException
 from app.database.connection import get_database
 from app.models.event_model import EventModel
@@ -39,9 +40,9 @@ class EventService:
         return created_event
 
     @staticmethod
-    async def get_all_events(search: str = None, category: str = None, date: str = None, venue: str = None, isPaidEvent: bool = None, page: int = 1, limit: int = 100):
+    async def get_all_events(search: Optional[str] = None, category: Optional[str] = None, date: Optional[str] = None, venue: Optional[str] = None, isPaidEvent: Optional[bool] = None, page: int = 1, limit: int = 10):
         db = get_database()
-        query = {}
+        query: dict[str, Any] = {}
         if search:
             # Search across title, description, and category
             query["$or"] = [
@@ -59,8 +60,17 @@ class EventService:
         if isPaidEvent is not None:
             query["isPaidEvent"] = isPaidEvent
             
-        cursor = db["events"].find(query).sort("createdAt", -1)
-        events = await cursor.to_list(None)  # Get all matching events
+        skip = (page - 1) * limit
+
+        projection = {
+            "title": 1, "description": 1, "date": 1, "time": 1, "venue": 1,
+            "category": 1, "categoryId": 1, "imageUrl": 1, "image": 1, "thumbnailUrl": 1,
+            "maxParticipants": 1, "registeredCount": 1, "status": 1, "isPaidEvent": 1,
+            "price": 1, "organizerName": 1, "createdAt": 1, "isFeatured": 1
+        }
+
+        cursor = db["events"].find(query, projection).sort("createdAt", -1).skip(skip).limit(limit)
+        events = await cursor.to_list(length=limit)
         
         for event in events:
             event["id"] = str(event.pop("_id"))

@@ -13,6 +13,7 @@ class EventModel(BaseModel):
     organizerId: Optional[str] = None
     organizerName: str
     imageUrl: Optional[str] = None
+    thumbnailUrl: Optional[str] = None
     maxParticipants: int
     registeredCount: int = 0
     status: str = "open"

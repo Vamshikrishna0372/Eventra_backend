@@ -118,11 +118,21 @@ class AuthService:
     @staticmethod
     async def update_profile(user_id: str, update_data: dict):
         db = get_database()
+        from datetime import datetime
+        
         # Filter out none values
         update_fields = {k: v for k, v in update_data.items() if v is not None}
         
         if not update_fields:
             return await AuthService.get_profile(user_id)
+
+        # Handle nested preferences if present to avoid overwriting the entire object
+        if "preferences" in update_fields and isinstance(update_fields["preferences"], dict):
+            preferences = update_fields.pop("preferences")
+            for key, value in preferences.items():
+                update_fields[f"preferences.{key}"] = value
+        
+        update_fields["updatedAt"] = datetime.utcnow()
             
         result = await db["users"].update_one(
             {"_id": ObjectId(user_id)},

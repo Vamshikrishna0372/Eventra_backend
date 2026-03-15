@@ -10,6 +10,7 @@ class EventCreate(BaseModel):
     venue: str
     category: str
     imageUrl: Optional[str] = None
+    thumbnailUrl: Optional[str] = None
     maxParticipants: int
     organizerName: str
     isPaidEvent: bool = False
@@ -24,6 +25,7 @@ class EventUpdate(BaseModel):
     venue: Optional[str] = None
     category: Optional[str] = None
     imageUrl: Optional[str] = None
+    thumbnailUrl: Optional[str] = None
     maxParticipants: Optional[int] = None
     organizerName: Optional[str] = None
     isPaidEvent: Optional[bool] = None
@@ -41,6 +43,7 @@ class EventResponse(BaseModel):
     category: str
     organizerId: str
     imageUrl: Optional[str]
+    thumbnailUrl: Optional[str] = None
     maxParticipants: int
     registeredCount: int
     status: str
