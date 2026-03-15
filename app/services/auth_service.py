@@ -36,12 +36,19 @@ class AuthService:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
-        user["id"] = str(user.pop("_id"))
+        
+        # Return only necessary user info for performance
+        minimal_user = {
+            "id": str(user["_id"]),
+            "name": user.get("name"),
+            "email": user.get("email"),
+            "role": user.get("role", "student")
+        }
         
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "user": user
+            "user": minimal_user
         }
 
     @staticmethod
@@ -90,12 +97,19 @@ class AuthService:
                     )
 
             access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
-            user["id"] = str(user.pop("_id"))
+            
+            # Return only necessary user info for performance
+            minimal_user = {
+                "id": str(user["_id"]),
+                "name": user.get("name"),
+                "email": user.get("email"),
+                "role": user.get("role", "student")
+            }
 
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
-                "user": user
+                "user": minimal_user
             }
         except HTTPException:
             raise
@@ -110,6 +124,11 @@ class AuthService:
             raise HTTPException(status_code=404, detail="User not found")
         
         user["id"] = str(user.pop("_id"))
+        
+        # Check if user is a coordinator for any event
+        is_coordinator = await db["events"].find_one({"coordinators.userId": user["id"]}) is not None
+        user["isCoordinator"] = is_coordinator
+
         # Remove password hash from response
         if "password" in user:
             del user["password"]

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class EventModel(BaseModel):
@@ -12,6 +12,8 @@ class EventModel(BaseModel):
     category: str
     organizerId: Optional[str] = None
     organizerName: str
+    organizerEmail: Optional[str] = "support@eventra.com"
+    coordinators: List[dict] = []
     imageUrl: Optional[str] = None
     thumbnailUrl: Optional[str] = None
     maxParticipants: int

@@ -37,3 +37,19 @@ async def delete_category(category_id: str):
         return {"success": True, "message": "Category deleted"}
     except:
         return {"success": False, "message": "Invalid ID"}
+@router.put("/{category_id}", dependencies=[Depends(require_admin)])
+async def update_category(category_id: str, cat_data: CategoryCreate):
+    db = get_database()
+    try:
+        res = await db["categories"].update_one(
+            {"_id": ObjectId(category_id)},
+            {"$set": cat_data.model_dump()}
+        )
+        if res.matched_count == 0:
+            return {"success": False, "message": "Category not found"}
+        
+        updated = await db["categories"].find_one({"_id": ObjectId(category_id)})
+        updated["id"] = str(updated.pop("_id"))
+        return {"success": True, "message": "Category updated", "data": updated}
+    except:
+        return {"success": False, "message": "Invalid ID or update failed"}

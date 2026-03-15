@@ -21,13 +21,41 @@ async def get_trending_events():
     events = await EventService.get_trending_events()
     return {"success": True, "message": "Trending events retrieved", "data": events}
 
+@router.get("/coordinated")
+async def get_coordinated_events(current_user: dict = Depends(get_current_user)):
+    from app.database.connection import get_database
+    db = get_database()
+    cursor = db["events"].find({"coordinators.userId": current_user["id"]})
+    events = await cursor.to_list(1000)
+    for event in events:
+        event["id"] = str(event.pop("_id"))
+    return {"success": True, "message": "Coordinated events retrieved", "data": events}
+
 @router.get("/{id}")
 async def get_event(id: str):
     event = await EventService.get_event(id)
     return {"success": True, "message": "Event retrieved", "data": event}
 
-@router.get("/{id}/participants", dependencies=[Depends(require_admin)])
-async def get_event_participants(id: str):
+@router.get("/{id}/participants")
+async def get_event_participants(id: str, current_user: dict = Depends(get_current_user)):
+    # Check if admin
+    if current_user.get("role") == "admin":
+        participants = await EventService.get_event_participants(id)
+        return {"success": True, "message": "Participants retrieved", "data": participants}
+    
+    # Check if coordinator of THIS specific event
+    from app.database.connection import get_database
+    from bson import ObjectId
+    from fastapi import HTTPException
+    db = get_database()
+    event = await db["events"].find_one({
+        "_id": ObjectId(id),
+        "coordinators.userId": current_user["id"]
+    })
+    
+    if not event:
+        raise HTTPException(status_code=403, detail="Not authorized to view participants for this event")
+        
     participants = await EventService.get_event_participants(id)
     return {"success": True, "message": "Participants retrieved", "data": participants}
 
@@ -45,3 +73,17 @@ async def update_event(id: str, event_data: EventUpdate):
 async def delete_event(id: str):
     result = await EventService.delete_event(id)
     return {"success": True, "message": "Event deleted successfully", "data": result}
+    
+from pydantic import BaseModel
+class AddCoordinatorReq(BaseModel):
+    email: str
+
+@router.post("/{id}/add-coordinator", dependencies=[Depends(require_admin)])
+async def add_coordinator(id: str, coord_data: AddCoordinatorReq):
+    result = await EventService.add_coordinator(id, coord_data.email)
+    return {"success": True, "message": "Coordinator added successfully", "data": result}
+
+@router.delete("/{id}/remove-coordinator/{user_id}", dependencies=[Depends(require_admin)])
+async def remove_coordinator(id: str, user_id: str):
+    result = await EventService.remove_coordinator(id, user_id)
+    return {"success": True, "message": "Coordinator removed successfully", "data": result}

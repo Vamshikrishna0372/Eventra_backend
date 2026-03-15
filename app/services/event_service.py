@@ -85,7 +85,9 @@ class EventService:
                 raise HTTPException(status_code=404, detail="Event not found")
             event["id"] = str(event.pop("_id"))
             return event
-        except:
+        except HTTPException:
+            raise
+        except Exception:
             raise HTTPException(status_code=400, detail="Invalid event ID")
 
     @staticmethod
@@ -172,8 +174,10 @@ class EventService:
                     await db["notifications"].insert_many(notifications)
                 
             return await EventService.get_event(event_id)
-        except:
-             raise HTTPException(status_code=400, detail="Invalid event ID")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid event ID")
 
     @staticmethod
     async def delete_event(event_id: str):
@@ -183,5 +187,56 @@ class EventService:
             if result.deleted_count == 0:
                 raise HTTPException(status_code=404, detail="Event not found")
             return {"message": "Event deleted successfully"}
-        except:
+        except HTTPException:
+            raise
+        except Exception:
             raise HTTPException(status_code=400, detail="Invalid event ID")
+
+    @staticmethod
+    async def add_coordinator(event_id: str, email: str):
+        db = get_database()
+        try:
+            # Add unique coordinator checking by userId
+            event = await db["events"].find_one({"_id": ObjectId(event_id)})
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
+                
+            user = await db["users"].find_one({"email": email})
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found with this email")
+                
+            coordinator_data = {
+                "userId": str(user["_id"]),
+                "name": user["name"],
+                "email": user["email"]
+            }
+                
+            coordinators = event.get("coordinators", [])
+            for c in coordinators:
+                if c.get("userId") == coordinator_data.get("userId") or c.get("email") == coordinator_data.get("email"):
+                    raise HTTPException(status_code=400, detail="User is already a coordinator")
+            
+            result = await db["events"].update_one(
+                {"_id": ObjectId(event_id)},
+                {"$push": {"coordinators": coordinator_data}}
+            )
+            return {"message": "Coordinator added successfully", "coordinator": coordinator_data}
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid request")
+    @staticmethod
+    async def remove_coordinator(event_id: str, user_id: str):
+        db = get_database()
+        try:
+            result = await db["events"].update_one(
+                {"_id": ObjectId(event_id)},
+                {"$pull": {"coordinators": {"userId": user_id}}}
+            )
+            if result.matched_count == 0:
+                raise HTTPException(status_code=404, detail="Event not found")
+            return {"message": "Coordinator removed successfully"}
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid request")

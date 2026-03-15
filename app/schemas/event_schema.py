@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class EventCreate(BaseModel):
@@ -16,6 +16,7 @@ class EventCreate(BaseModel):
     isPaidEvent: bool = False
     price: float = 0.0
     isFeatured: bool = False
+    coordinators: Optional[List[dict]] = []
 
 class EventUpdate(BaseModel):
     title: Optional[str] = None
@@ -32,6 +33,7 @@ class EventUpdate(BaseModel):
     price: Optional[float] = None
     isFeatured: Optional[bool] = None
     status: Optional[str] = None
+    coordinators: Optional[List[dict]] = None
 
 class EventResponse(BaseModel):
     id: str

@@ -4,23 +4,30 @@ from app.models.registration_model import RegistrationModel
 from bson import ObjectId
 from datetime import datetime
 import secrets
+import random
 from app.services.email_service import EmailService
+from app.models.ticket_model import TicketModel
 
 class RegistrationService:
     @staticmethod
-    async def register_student(event_id: str, current_user: dict):
+    async def register_student(event_id: str, current_user: dict, is_paid: bool = False):
         db = get_database()
         user_id = current_user["id"]
 
         # Check for duplication
-        existing = await db["registrations"].find_one({"userId": user_id, "eventId": event_id, "registrationStatus": "confirmed"})
-        if existing:
+        existing = await db["registrations"].find_one({"userId": user_id, "eventId": event_id})
+        if existing and existing.get("registrationStatus") == "confirmed":
             raise HTTPException(status_code=400, detail="Already registered for this event")
         
         # Check capacity
         event = await db["events"].find_one({"_id": ObjectId(event_id)})
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
+        
+        # If event is paid and we haven't verified payment yet, throw error
+        if event.get("isPaidEvent") and not is_paid:
+            raise HTTPException(status_code=402, detail="Payment required for this event")
+
         if event["status"] != "open":
             raise HTTPException(status_code=400, detail="Event registration is closed or completed")
         if event["registeredCount"] >= event["maxParticipants"]:
@@ -31,6 +38,11 @@ class RegistrationService:
         new_reg = RegistrationModel(userId=user_id, eventId=event_id, registrationStatus="confirmed", ticketNumber=ticket_number)
         res = await db["registrations"].insert_one(new_reg.model_dump(by_alias=True, exclude_none=True))
         
+        # Create ticket in tickets collection
+        ticket_id_str = f"{str(event_id)[:6]}-{str(user_id)[:6]}-{random.randint(1000, 9999)}"
+        new_ticket = TicketModel(eventId=str(event_id), userId=str(user_id), ticketId=ticket_id_str)
+        await db["tickets"].insert_one(new_ticket.model_dump(by_alias=True, exclude_none=True))
+
         # Update event count
         await db["events"].update_one({"_id": ObjectId(event_id)}, {"$inc": {"registeredCount": 1}})
 
@@ -84,6 +96,12 @@ class RegistrationService:
                     "venue": event["venue"],
                     "imageUrl": event.get("imageUrl", "")
                 }
+            
+            # Fetch ticket info
+            ticket = await db["tickets"].find_one({"userId": user_id, "eventId": r["eventId"]})
+            if ticket:
+                r["ticketId"] = ticket["ticketId"]
+            
             results.append(r)
         return results
 
@@ -151,3 +169,25 @@ class RegistrationService:
         await db["events"].update_one({"_id": ObjectId(reg["eventId"])}, {"$inc": {"registeredCount": -1}})
 
         return {"message": "Registration cancelled successfully"}
+    @staticmethod
+    async def get_event_registrations(event_id: str):
+        db = get_database()
+        regs = await db["registrations"].find({"eventId": event_id}).sort("registrationDate", -1).to_list(1000)
+        
+        results = []
+        for r in regs:
+            try:
+                user = await db["users"].find_one({"_id": ObjectId(r["userId"])}, {"name": 1, "email": 1})
+            except:
+                user = None
+            
+            r["id"] = str(r.pop("_id"))
+            r["status"] = r.get("registrationStatus", "confirmed")
+            r["registeredAt"] = r.get("registrationDate", datetime.utcnow()).isoformat() if isinstance(r.get("registrationDate"), datetime) else str(r.get("registrationDate", ""))
+            
+            if user:
+                r["studentName"] = user["name"]
+                r["studentEmail"] = user["email"]
+                
+            results.append(r)
+        return results

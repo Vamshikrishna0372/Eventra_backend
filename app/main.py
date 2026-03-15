@@ -13,6 +13,7 @@ from app.routes.wishlist_routes import router as wishlist_router
 from app.routes.comment_routes import router as comment_routes
 from app.routes.settings_routes import router as settings_routes
 from app.routes.ticket_routes import router as ticket_router
+from app.routes.payment_routes import router as payment_router
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.tasks.reminder_tasks import send_event_reminders
@@ -31,7 +32,7 @@ logger = logging.getLogger("eventra")
 # Setup CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "https://eventra-campus.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,6 +81,7 @@ app.include_router(wishlist_router)
 app.include_router(comment_routes)
 app.include_router(settings_routes)
 app.include_router(ticket_router)
+app.include_router(payment_router)
 
 @app.on_event("startup")
 async def startup_db():
@@ -93,7 +95,7 @@ async def startup_db():
         await db["users"].create_index("email", unique=True)
         await db["events"].create_index("categoryId")
         await db["events"].create_index("category")
-        await db["events"].create_index("createdAt", direction=-1)
+        await db["events"].create_index([("createdAt", -1)])
         await db["events"].create_index("date")
         await db["registrations"].create_index("userId")
         await db["registrations"].create_index("eventId")

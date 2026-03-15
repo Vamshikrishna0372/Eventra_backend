@@ -12,6 +12,9 @@ class AnalyticsService:
         total_registrations = await db["registrations"].count_documents({})
         total_users = await db["users"].count_documents({"role": "student"})
         
+        total_checked_in = await db["tickets"].count_documents({"checkedIn": True})
+        pending_attendees = total_registrations - total_checked_in
+        
         # Get category distribution
         pipeline = [
             {"$group": {"_id": "$category", "count": {"$sum": 1}}}
@@ -86,6 +89,8 @@ class AnalyticsService:
             "completedEvents": completed_events,
             "totalRegistrations": total_registrations,
             "totalUsers": total_users,
+            "totalCheckedIn": total_checked_in,
+            "pendingAttendees": pending_attendees,
             "trendingCategory": trending_category,
             "categoryDistribution": category_data,
             "recentRegistrations": recent_data,
