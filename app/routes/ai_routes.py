@@ -1,28 +1,19 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter
 from app.services.ai_service import AIService
-from app.middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/api", tags=["AI Services"])
 
 @router.get("/test-ai")
 async def test_ai():
     """
-    Test endpoint to verify Gemini AI integration.
+    Health-check endpoint to verify Gemini AI integration.
+    Always returns 200 — AIService returns a safe fallback if Gemini is unavailable.
     """
-    prompt = "Explain what the Eventra event management platform does in a short and professional way."
-    
-    try:
-        response = await AIService.ask_gemini(prompt)
-        return {
-            "success": True,
-            "message": "Gemini AI is connected and working!",
-            "data": {
-                "prompt": prompt,
-                "response": response
-            }
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=502, 
-            detail=f"Failed to connect to Gemini AI: {str(e)}"
-        )
+    prompt = "In one sentence, describe what the Eventra campus event management platform does."
+    response = await AIService.ask_gemini(prompt)
+    is_fallback = "temporarily unavailable" in response.lower()
+    return {
+        "success": not is_fallback,
+        "message": "Gemini AI is connected and working!" if not is_fallback else "AI fallback active — check API key or model name.",
+        "data": {"prompt": prompt, "response": response}
+    }
