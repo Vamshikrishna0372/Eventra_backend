@@ -6,7 +6,7 @@ from app.middleware.role_middleware import require_admin
 
 router = APIRouter(prefix="/api/events", tags=["Events"])
 
-@router.get("/")
+@router.get("")
 async def get_events(search: str = None, category: str = None, date: str = None, venue: str = None, isPaidEvent: bool = None, page: int = 1, limit: int = 10):
     events = await EventService.get_all_events(search, category, date, venue, isPaidEvent, page, limit)
     return {"success": True, "message": "Events retrieved", "data": events}
@@ -59,7 +59,7 @@ async def get_event_participants(id: str, current_user: dict = Depends(get_curre
     participants = await EventService.get_event_participants(id)
     return {"success": True, "message": "Participants retrieved", "data": participants}
 
-@router.post("/", dependencies=[Depends(require_admin)])
+@router.post("", dependencies=[Depends(require_admin)])
 async def create_event(event_data: EventCreate, current_user: dict = Depends(get_current_user)):
     event = await EventService.create_event(event_data.model_dump(), current_user)
     return {"success": True, "message": "Event created successfully", "data": event}

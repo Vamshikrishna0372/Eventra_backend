@@ -66,6 +66,11 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     user["id"] = str(user.pop("_id"))
     user.pop("password", None)
+    
+    # Check if user is a coordinator
+    is_coordinator = await db["events"].find_one({"coordinators.userId": user["id"]}) is not None
+    user["isCoordinator"] = is_coordinator
+    
     return {"success": True, "message": "Profile fetched", "data": user}
 
 @router.put("/update-profile")

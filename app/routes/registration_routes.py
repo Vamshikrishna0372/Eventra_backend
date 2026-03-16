@@ -8,12 +8,12 @@ from app.database.connection import get_database
 
 router = APIRouter(prefix="/api/registrations", tags=["Registrations"])
 
-@router.get("/", dependencies=[Depends(require_admin)])
+@router.get("", dependencies=[Depends(require_admin)])
 async def get_all_registrations():
     regs = await RegistrationService.get_all_registrations()
     return {"success": True, "message": "All registrations retrieved", "data": regs}
 
-@router.post("/")
+@router.post("")
 async def register_student(reg_data: RegistrationCreate, current_user: dict = Depends(get_current_user)):
     reg = await RegistrationService.register_student(reg_data.eventId, current_user)
     return {"success": True, "message": "Registered successfully", "data": reg}

@@ -74,36 +74,45 @@ class RegistrationService:
     @staticmethod
     async def get_user_registrations(user_id: str):
         db = get_database()
-        # Get all registrations (including cancelled so user can see history)
-        regs = await db["registrations"].find({"userId": user_id}).sort("registrationDate", -1).to_list(1000)
-        
-        results = []
-        for r in regs:
-            # Fetch minimal event info
-            try:
-                event = await db["events"].find_one({"_id": ObjectId(r["eventId"])}, {"title": 1, "date": 1, "venue": 1, "imageUrl": 1})
-            except:
-                event = None
-            r["id"] = str(r.pop("_id"))
-            # Add 'registeredAt' and 'status' aliases for frontend compatibility
-            r["registeredAt"] = r.get("registrationDate", datetime.utcnow()).isoformat() if isinstance(r.get("registrationDate"), datetime) else str(r.get("registrationDate", ""))
-            r["status"] = r.get("registrationStatus", "confirmed")
-            if event:
-                r["event"] = {
-                    "id": str(event["_id"]),
-                    "title": event["title"],
-                    "date": event["date"],
-                    "venue": event["venue"],
-                    "imageUrl": event.get("imageUrl", "")
-                }
+        try:
+            # Get all registrations (including cancelled so user can see history)
+            regs = await db["registrations"].find({"userId": user_id}).sort("registrationDate", -1).to_list(1000)
             
-            # Fetch ticket info
-            ticket = await db["tickets"].find_one({"userId": user_id, "eventId": r["eventId"]})
-            if ticket:
-                r["ticketId"] = ticket["ticketId"]
-            
-            results.append(r)
-        return results
+            results = []
+            for r in regs:
+                # Fetch minimal event info
+                try:
+                    event = await db["events"].find_one({"_id": ObjectId(r["eventId"])}, {"title": 1, "date": 1, "venue": 1, "imageUrl": 1})
+                except:
+                    event = None
+                
+                r["id"] = str(r.pop("_id"))
+                # Add 'registeredAt' and 'status' aliases for frontend compatibility
+                r["registeredAt"] = r.get("registrationDate", datetime.utcnow()).isoformat() if isinstance(r.get("registrationDate"), datetime) else str(r.get("registrationDate", ""))
+                r["status"] = r.get("registrationStatus", "confirmed")
+                if event:
+                    r["event"] = {
+                        "id": str(event["_id"]),
+                        "title": event["title"],
+                        "date": event["date"],
+                        "venue": event["venue"],
+                        "imageUrl": event.get("imageUrl", "")
+                    }
+                
+                # Fetch ticket info
+                try:
+                    ticket = await db["tickets"].find_one({"userId": user_id, "eventId": r["eventId"]})
+                    if ticket:
+                        r["ticketId"] = ticket["ticketId"]
+                except:
+                    pass
+                
+                results.append(r)
+            return results
+        except Exception as e:
+            import logging
+            logging.error(f"Error in get_user_registrations: {e}")
+            return []
 
     @staticmethod
     async def check_in_student(reg_id: str):
@@ -124,30 +133,35 @@ class RegistrationService:
     @staticmethod
     async def get_all_registrations():
         db = get_database()
-        regs = await db["registrations"].find().sort("registrationDate", -1).to_list(1000)
-        
-        results = []
-        for r in regs:
-            # Fetch user and event info
-            try:
-                user = await db["users"].find_one({"_id": ObjectId(r["userId"])}, {"name": 1, "email": 1})
-                event = await db["events"].find_one({"_id": ObjectId(r["eventId"])}, {"title": 1})
-            except:
-                user = None
-                event = None
+        try:
+            regs = await db["registrations"].find().sort("registrationDate", -1).to_list(1000)
             
-            r["id"] = str(r.pop("_id"))
-            # Add frontend-compatible aliases
-            r["status"] = r.get("registrationStatus", "confirmed")
-            r["registeredAt"] = r.get("registrationDate", datetime.utcnow()).isoformat() if isinstance(r.get("registrationDate"), datetime) else str(r.get("registrationDate", ""))
-            if user:
-                r["studentName"] = user["name"]
-                r["studentEmail"] = user["email"]
-            if event:
-                r["eventName"] = event["title"]
-            
-            results.append(r)
-        return results
+            results = []
+            for r in regs:
+                # Fetch user and event info
+                try:
+                    user = await db["users"].find_one({"_id": ObjectId(r["userId"])}, {"name": 1, "email": 1})
+                    event = await db["events"].find_one({"_id": ObjectId(r["eventId"])}, {"title": 1})
+                except:
+                    user = None
+                    event = None
+                
+                r["id"] = str(r.pop("_id"))
+                # Add frontend-compatible aliases
+                r["status"] = r.get("registrationStatus", "confirmed")
+                r["registeredAt"] = r.get("registrationDate", datetime.utcnow()).isoformat() if isinstance(r.get("registrationDate"), datetime) else str(r.get("registrationDate", ""))
+                if user:
+                    r["studentName"] = user["name"]
+                    r["studentEmail"] = user["email"]
+                if event:
+                    r["eventName"] = event["title"]
+                
+                results.append(r)
+            return results
+        except Exception as e:
+            import logging
+            logging.error(f"Error in get_all_registrations: {e}")
+            return []
 
     @staticmethod
     async def cancel_registration(reg_id: str, current_user: dict):

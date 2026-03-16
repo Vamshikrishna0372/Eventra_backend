@@ -14,42 +14,66 @@ class AuthService:
     @staticmethod
     async def register_user(user_data: UserCreate):
         db = get_database()
-        existing_user = await db["users"].find_one({"email": user_data.email})
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-        
-        user_dict = user_data.model_dump()
-        user_dict["password"] = get_password_hash(user_dict["password"])
-        
-        new_user = UserModel(**user_dict)
-        result = await db["users"].insert_one(new_user.model_dump(by_alias=True, exclude_none=True))
-        
-        created_user = await db["users"].find_one({"_id": result.inserted_id})
-        created_user["id"] = str(created_user.pop("_id"))
-        return created_user
+        try:
+            existing_user = await db["users"].find_one({"email": user_data.email})
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            
+            user_dict = user_data.model_dump()
+            user_dict["password"] = get_password_hash(user_dict["password"])
+            
+            new_user = UserModel(**user_dict)
+            result = await db["users"].insert_one(new_user.model_dump(by_alias=True, exclude_none=True))
+            
+            created_user = await db["users"].find_one({"_id": result.inserted_id})
+            created_user["id"] = str(created_user.pop("_id"))
+            return created_user
+        except HTTPException:
+            raise
+        except Exception as e:
+            import logging
+            error_msg = str(e)
+            logging.error(f"Error in user registration: {error_msg}")
+            if "DNS" in error_msg or "selection timeout" in error_msg:
+                raise HTTPException(status_code=503, detail="Database connection issue. Please check your MongoDB Atlas cluster hostname in .env")
+            raise HTTPException(status_code=500, detail="Registration failed due to server error")
 
     @staticmethod
     async def login_user(login_data: UserLogin):
         db = get_database()
-        user = await db["users"].find_one({"email": login_data.email})
-        if not user or not verify_password(login_data.password, user["password"]):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-        access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
-        
-        # Return only necessary user info for performance
-        minimal_user = {
-            "id": str(user["_id"]),
-            "name": user.get("name"),
-            "email": user.get("email"),
-            "role": user.get("role", "student")
-        }
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": minimal_user
-        }
+        try:
+            user = await db["users"].find_one({"email": login_data.email})
+            if not user or not verify_password(login_data.password, user["password"]):
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+            
+            access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
+            
+            # Check if user is a coordinator
+            is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
+            
+            # Return only necessary user info for performance
+            minimal_user = {
+                "id": str(user["_id"]),
+                "name": user.get("name"),
+                "email": user.get("email"),
+                "role": user.get("role", "student"),
+                "isCoordinator": is_coordinator
+            }
+            
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": minimal_user
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            import logging
+            error_msg = str(e)
+            logging.error(f"Error in user login: {error_msg}")
+            if "DNS" in error_msg or "selection timeout" in error_msg:
+                raise HTTPException(status_code=503, detail="Database connection issue. Please check your MongoDB Atlas cluster hostname in .env")
+            raise HTTPException(status_code=500, detail="Login failed due to server error")
 
     @staticmethod
     async def google_login_user(token: str):
@@ -98,12 +122,16 @@ class AuthService:
 
             access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
             
+            # Check if user is a coordinator
+            is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
+            
             # Return only necessary user info for performance
             minimal_user = {
                 "id": str(user["_id"]),
                 "name": user.get("name"),
                 "email": user.get("email"),
-                "role": user.get("role", "student")
+                "role": user.get("role", "student"),
+                "isCoordinator": is_coordinator
             }
 
             return {
@@ -119,9 +147,16 @@ class AuthService:
     @staticmethod
     async def get_profile(user_id: str):
         db = get_database()
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        try:
+            user = await db["users"].find_one({"_id": ObjectId(user_id)})
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+        except HTTPException:
+            raise
+        except Exception as e:
+            import logging
+            logging.error(f"Error fetching profile: {e}")
+            raise HTTPException(status_code=500, detail="Internal Server Error")
         
         user["id"] = str(user.pop("_id"))
         

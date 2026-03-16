@@ -2,6 +2,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from dotenv import load_dotenv
+import os
+
+# Ensure environment variables are loaded early
+load_dotenv()
 from app.routes.auth_routes import router as auth_router
 from app.routes.auth_routes import users_router
 from app.routes.event_routes import router as event_router
@@ -14,6 +19,15 @@ from app.routes.comment_routes import router as comment_routes
 from app.routes.settings_routes import router as settings_routes
 from app.routes.ticket_routes import router as ticket_router
 from app.routes.payment_routes import router as payment_router
+from app.routes.ai_routes import router as ai_router
+from app.routes.chat_routes import router as chat_router
+from app.routes.description_routes import router as description_router
+from app.routes.recommendation_routes import router as recommendations_router
+from app.routes.email_routes import router as email_router
+from app.routes.feedback_routes import router as feedback_router
+from app.routes.planner_routes import router as event_planner_router
+from app.routes.promotion_routes import router as promotion_router
+from app.routes.search_routes import router as event_search_router
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.tasks.reminder_tasks import send_event_reminders
@@ -29,14 +43,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eventra")
 
-# Setup CORS
+# Setup CORS - Optimized for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "https://eventra-campus.vercel.app"],
+    allow_origins=[
+        "http://localhost:8080", 
+        "http://127.0.0.1:8080", 
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://eventra-campus.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom Middleware to ensure CORS on every response (including errors/redirects)
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    # Process preflight OPTIONS requests directly if needed
+    if request.method == "OPTIONS":
+        response = JSONResponse(content="OK")
+    else:
+        response = await call_next(request)
+    
+    # Add CORS headers
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 # Global exception handlers
 @app.exception_handler(HTTPException)
@@ -82,13 +120,29 @@ app.include_router(comment_routes)
 app.include_router(settings_routes)
 app.include_router(ticket_router)
 app.include_router(payment_router)
+app.include_router(ai_router)
+app.include_router(chat_router)
+app.include_router(description_router)
+app.include_router(recommendations_router)
+app.include_router(email_router)
+app.include_router(feedback_router)
+app.include_router(event_planner_router)
+app.include_router(promotion_router)
+app.include_router(event_search_router)
 
 @app.on_event("startup")
 async def startup_db():
-    logger.info("Initializing Eventra Database and Services...")
-    from app.database.connection import get_database, client
-    # Initial setup if required. client is successfully created already.
-    # Populate categories if not exists
+    logger.info("Initializing Eventra Database...")
+    from app.database.connection import get_database, verify_connection, MONGO_URI
+    
+    # Verify MongoDB Connection first
+    connected = await verify_connection()
+    if not connected:
+        logger.error("CRITICAL: MongoDB is NOT running at " + MONGO_URI)
+        logger.error("Please ensure MongoDB is installed and running on your local machine.")
+        logger.error("The backend will start, but database-dependent features will fail.")
+        return
+
     db = get_database()
     try:
         # 1. Create Indexes for performance and uniqueness
@@ -179,19 +233,37 @@ async def startup_db():
             await db["settings"].insert_one(default_settings.model_dump(by_alias=True, exclude_none=True))
 
     except Exception as e:
-        print("Failed system initialization: ", e)
+        logger.error(f"Failed system initialization: {e}")
 
     # Start the scheduler
     try:
         scheduler.add_job(send_event_reminders, 'interval', minutes=60)
         scheduler.start()
-        logging.info("Scheduler started successfully")
+        logger.info("Scheduler started")
     except Exception as e:
-        logging.error(f"Failed to start scheduler: {e}")
+        logger.error(f"Failed to start scheduler: {e}")
+
+    logger.info("Gemini AI service initialized")
+    logger.info("Eventra backend server running successfully")
 
 @app.on_event("shutdown")
 async def shutdown_scheduler():
-    scheduler.shutdown()
+    try:
+        scheduler.shutdown()
+        logger.info("Scheduler shut down successfully")
+    except Exception:
+        # Ignore SchedulerNotRunningError and other shutdown issues
+        pass
+
+@app.get("/health")
+async def health_check():
+    from app.database.connection import is_connected, MONGO_URI
+    return {
+        "status": "online",
+        "database": "connected" if is_connected else "disconnected",
+        "mongo_uri": MONGO_URI,
+        "cors_configuration": "active"
+    }
 
 @app.get("/")
 def read_root():

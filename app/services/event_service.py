@@ -2,7 +2,10 @@ from typing import Optional, Any
 from fastapi import HTTPException
 from app.database.connection import get_database
 from app.models.event_model import EventModel
+import logging
 from bson import ObjectId
+
+logger = logging.getLogger("eventra.events")
 
 class EventService:
     @staticmethod
@@ -69,12 +72,16 @@ class EventService:
             "price": 1, "organizerName": 1, "createdAt": 1, "isFeatured": 1
         }
 
-        cursor = db["events"].find(query, projection).sort("createdAt", -1).skip(skip).limit(limit)
-        events = await cursor.to_list(length=limit)
-        
-        for event in events:
-            event["id"] = str(event.pop("_id"))
-        return events
+        try:
+            cursor = db["events"].find(query, projection).sort("createdAt", -1).skip(skip).limit(limit)
+            events = await cursor.to_list(length=limit)
+            
+            for event in events:
+                event["id"] = str(event.pop("_id"))
+            return events
+        except Exception as e:
+            logger.error(f"Error fetching events: {e}")
+            return []
 
     @staticmethod
     async def get_event(event_id: str):
@@ -93,24 +100,32 @@ class EventService:
     @staticmethod
     async def get_featured_event():
         db = get_database()
-        event = await db["events"].find_one({"isFeatured": True}, sort=[("createdAt", -1)])
-        if not event:
-            # Fallback to latest opened event if none featured
-            event = await db["events"].find_one({"status": "open"}, sort=[("createdAt", -1)])
-        
-        if event:
-            event["id"] = str(event.pop("_id"))
-        return event
+        try:
+            event = await db["events"].find_one({"isFeatured": True}, sort=[("createdAt", -1)])
+            if not event:
+                # Fallback to latest opened event if none featured
+                event = await db["events"].find_one({"status": "open"}, sort=[("createdAt", -1)])
+            
+            if event:
+                event["id"] = str(event.pop("_id"))
+            return event
+        except Exception as e:
+            logger.error(f"Error fetching featured event: {e}")
+            return None
 
     @staticmethod
     async def get_trending_events():
         db = get_database()
-        # Events with most registrations
-        cursor = db["events"].find({"status": "open"}).sort("registeredCount", -1).limit(5)
-        events = await cursor.to_list(5)
-        for event in events:
-            event["id"] = str(event.pop("_id"))
-        return events
+        try:
+            # Events with most registrations
+            cursor = db["events"].find({"status": "open"}).sort("registeredCount", -1).limit(5)
+            events = await cursor.to_list(5)
+            for event in events:
+                event["id"] = str(event.pop("_id"))
+            return events
+        except Exception as e:
+            logger.error(f"Error fetching trending events: {e}")
+            return []
 
     @staticmethod
     async def get_event_participants(event_id: str):

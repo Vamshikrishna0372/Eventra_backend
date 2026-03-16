@@ -11,6 +11,9 @@ async def send_event_reminders():
     """
     try:
         db = get_database()
+        if db is None:
+            logging.error("Task failed: MongoDB connection not available.")
+            return
         now = datetime.utcnow()
         tomorrow_start = now + timedelta(hours=23, minutes=50) # Buffer
         tomorrow_end = now + timedelta(hours=24, minutes=10)

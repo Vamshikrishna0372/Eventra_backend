@@ -13,10 +13,15 @@ async def get_notifications(user_id: str, current_user: dict = Depends(get_curre
     if current_user["id"] != user_id and current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     db = get_database()
-    notifications = await db["notifications"].find({"userId": user_id}).sort("createdAt", -1).to_list(100)
-    for n in notifications:
-        n["id"] = str(n.pop("_id"))
-    return {"success": True, "message": "Notifications retrieved", "data": notifications}
+    try:
+        notifications = await db["notifications"].find({"userId": user_id}).sort("createdAt", -1).to_list(100)
+        for n in notifications:
+            n["id"] = str(n.pop("_id"))
+        return {"success": True, "message": "Notifications retrieved", "data": notifications}
+    except Exception as e:
+        import logging
+        logging.error(f"Error fetching notifications: {e}")
+        return {"success": True, "message": "Currently unavailable", "data": []}
 
 @router.post("/create", dependencies=[Depends(require_admin)])
 async def create_notification(notif_data: NotificationCreate):
@@ -30,14 +35,22 @@ async def create_notification(notif_data: NotificationCreate):
 @router.put("/read/{id}")
 async def mark_read(id: str, current_user: dict = Depends(get_current_user)):
     db = get_database()
-    notif = await db["notifications"].find_one({"_id": ObjectId(id)})
-    if not notif:
-        raise HTTPException(status_code=404, detail="Not found")
-    if notif["userId"] != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
-    await db["notifications"].update_one({"_id": ObjectId(id)}, {"$set": {"readStatus": True}})
-    return {"success": True, "message": "Marked as read", "data": None}
+    try:
+        from bson import ObjectId
+        notif = await db["notifications"].find_one({"_id": ObjectId(id)})
+        if not notif:
+            raise HTTPException(status_code=404, detail="Not found")
+        if notif["userId"] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+            
+        await db["notifications"].update_one({"_id": ObjectId(id)}, {"$set": {"readStatus": True}})
+        return {"success": True, "message": "Marked as read", "data": None}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"Error marking notification as read: {e}")
+        return {"success": False, "message": "Failed to update notification"}
 @router.post("/broadcast", dependencies=[Depends(require_admin)])
 async def broadcast_notification(data: dict):
     # data expects {"message": str, "type": str, "title": str}

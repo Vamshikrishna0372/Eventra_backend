@@ -7,18 +7,23 @@ from bson import ObjectId
 
 router = APIRouter(prefix="/api/categories", tags=["Categories"])
 
-@router.get("/")
+@router.get("")
 async def get_categories():
     db = get_database()
-    categories = await db["categories"].find().to_list(100)
-    for cat in categories:
-        cat["id"] = str(cat.pop("_id"))
-        # Get count of events in this category
-        count = await db["events"].count_documents({"category": {"$regex": f"^{cat['name']}$", "$options": "i"}})
-        cat["eventCount"] = count
-    return {"success": True, "message": "Categories retrieved", "data": categories}
+    try:
+        categories = await db["categories"].find().to_list(100)
+        for cat in categories:
+            cat["id"] = str(cat.pop("_id"))
+            # Get count of events in this category
+            count = await db["events"].count_documents({"category": {"$regex": f"^{cat['name']}$", "$options": "i"}})
+            cat["eventCount"] = count
+        return {"success": True, "message": "Categories retrieved", "data": categories}
+    except Exception as e:
+        import logging
+        logging.error(f"Error fetching categories: {e}")
+        return {"success": True, "message": "Currently unavailable", "data": []}
 
-@router.post("/", dependencies=[Depends(require_admin)])
+@router.post("", dependencies=[Depends(require_admin)])
 async def create_category(cat_data: CategoryCreate):
     db = get_database()
     new_cat = CategoryModel(**cat_data.model_dump())
