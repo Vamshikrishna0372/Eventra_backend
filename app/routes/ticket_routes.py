@@ -57,10 +57,21 @@ async def scan_ticket(payload: dict, current_user: dict = Depends(get_current_us
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
             
+        # 1. Check legacy coordinators array
         is_coordinator = any(
             coord.get("userId") == current_user["id"]
             for coord in event.get("coordinators", [])
         )
+        
+        # 2. Check new coordinators collection
+        if not is_coordinator:
+            new_coord = await db["coordinators"].find_one({
+                "eventId": str(event["_id"]),
+                "userId": current_user["id"]
+            })
+            if new_coord:
+                is_coordinator = True
+
         if not is_coordinator and event.get("organizerId") != current_user["id"]:
             raise HTTPException(status_code=403, detail="Not authorized to scan tickets for this event")
 

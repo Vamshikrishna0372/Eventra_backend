@@ -28,6 +28,7 @@ from app.routes.feedback_routes import router as feedback_router
 from app.routes.planner_routes import router as event_planner_router
 from app.routes.promotion_routes import router as promotion_router
 from app.routes.search_routes import router as event_search_router
+from app.routes.coordinator_routes import router as coordinator_router
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.tasks.reminder_tasks import send_event_reminders
@@ -129,6 +130,7 @@ app.include_router(feedback_router)
 app.include_router(event_planner_router)
 app.include_router(promotion_router)
 app.include_router(event_search_router)
+app.include_router(coordinator_router)
 
 @app.on_event("startup")
 async def startup_db():

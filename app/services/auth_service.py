@@ -48,8 +48,10 @@ class AuthService:
             
             access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
             
-            # Check if user is a coordinator
-            is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
+            # Check if user is a coordinator (check both new and legacy storage)
+            is_coordinator = await db["coordinators"].find_one({"userId": str(user["_id"])}) is not None
+            if not is_coordinator:
+                is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
             
             # Return only necessary user info for performance
             minimal_user = {
@@ -122,8 +124,10 @@ class AuthService:
 
             access_token = create_access_token(data={"sub": str(user["_id"]), "role": user.get("role", "student")})
             
-            # Check if user is a coordinator
-            is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
+            # Check if user is a coordinator (check both new and legacy storage)
+            is_coordinator = await db["coordinators"].find_one({"userId": str(user["_id"])}) is not None
+            if not is_coordinator:
+                is_coordinator = await db["events"].find_one({"coordinators.userId": str(user["_id"])}) is not None
             
             # Return only necessary user info for performance
             minimal_user = {
@@ -161,7 +165,7 @@ class AuthService:
         user["id"] = str(user.pop("_id"))
         
         # Check if user is a coordinator for any event
-        is_coordinator = await db["events"].find_one({"coordinators.userId": user["id"]}) is not None
+        is_coordinator = await db["coordinators"].find_one({"userId": user["id"]}) is not None
         user["isCoordinator"] = is_coordinator
 
         # Remove password hash from response
