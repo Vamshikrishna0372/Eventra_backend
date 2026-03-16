@@ -43,39 +43,83 @@ async def scan_ticket(payload: dict, current_user: dict = Depends(get_current_us
     db = get_database()
     ticket = await db["tickets"].find_one({"ticketId": ticket_id})
     if not ticket:
-        raise HTTPException(status_code=404, detail="Invalid ticket")
+        raise HTTPException(status_code=404, detail="Invalid ticket — not found in system")
         
-    # Check if user is admin or coordinator
-    if current_user["role"] != "admin":
+    # Fetch event info (needed for auth check AND result card)
+    event = None
+    try:
         event = await db["events"].find_one({"_id": ObjectId(ticket["eventId"])})
+    except:
+        pass
+
+    # Authorization: admin always allowed; others need to be coordinator/organizer
+    if current_user["role"] != "admin":
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
             
-        is_coordinator = False
-        for coord in event.get("coordinators", []):
-            if coord.get("userId") == current_user["id"]:
-                is_coordinator = True
-                break
-                
+        is_coordinator = any(
+            coord.get("userId") == current_user["id"]
+            for coord in event.get("coordinators", [])
+        )
         if not is_coordinator and event.get("organizerId") != current_user["id"]:
             raise HTTPException(status_code=403, detail="Not authorized to scan tickets for this event")
-            
+
+    # Fetch participant info — userId may be stored as ObjectId string or plain string
+    participant = None
+    user_id_str = ticket.get("userId", "")
+    # Try as MongoDB ObjectId first (most common case)
+    try:
+        participant = await db["users"].find_one(
+            {"_id": ObjectId(user_id_str)}, {"name": 1, "email": 1}
+        )
+    except Exception:
+        pass
+    # Fallback: some auth providers store userId as a plain string
+    if not participant:
+        participant = await db["users"].find_one(
+            {"$or": [{"id": user_id_str}, {"userId": user_id_str}]},
+            {"name": 1, "email": 1}
+        )
+
+    # Build rich response payload for result card
+    result_data = {
+        "ticketId": ticket_id,
+        "eventName": event.get("title", "Unknown Event") if event else "Unknown Event",
+        "eventVenue": event.get("venue", "") if event else "",
+        "userName": participant.get("name", "Unknown Participant") if participant else "Unknown Participant",
+        "userEmail": participant.get("email", "") if participant else "",
+    }
+
+    # Already checked in?
     if ticket.get("checkedIn"):
-        return {"success": False, "message": "Ticket already used", "data": {"ticketId": ticket_id, "checkedInAt": ticket.get("checkedInAt")}}
+        result_data["checkedInAt"] = str(ticket.get("checkedInAt", ""))
+        return {
+            "success": False,
+            "message": "Ticket already checked in",
+            "data": result_data
+        }
         
     from datetime import datetime
-    await db["tickets"].update_one({"_id": ticket["_id"]}, {"$set": {"checkedIn": True, "checkedInAt": datetime.utcnow()}})
+    now = datetime.utcnow()
+    await db["tickets"].update_one(
+        {"_id": ticket["_id"]},
+        {"$set": {"checkedIn": True, "checkedInAt": now}}
+    )
     
-    # Also update attendanceStatus in registrations if possible
-    # We can try to find the matching registration
+    # Mirror update in registrations collection
     await db["registrations"].update_one(
         {"eventId": ticket["eventId"], "userId": ticket["userId"]},
         {"$set": {"attendanceStatus": "present"}}
     )
     
-    return {"success": True, "message": "Attendance marked", "data": {"ticketId": ticket_id}}
+    result_data["checkedInAt"] = str(now)
+    return {
+        "success": True,
+        "message": "Attendance marked successfully",
+        "data": result_data
+    }
 
 @router.post("/checkin")
 async def checkin_ticket(payload: dict, current_user: dict = Depends(get_current_user)):
-    # This is an alias for /scan as per user request
+    """Universal check-in endpoint — alias of /scan, auto-detects event from ticketId."""
     return await scan_ticket(payload, current_user)

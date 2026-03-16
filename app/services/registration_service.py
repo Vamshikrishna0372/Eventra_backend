@@ -38,10 +38,17 @@ class RegistrationService:
         new_reg = RegistrationModel(userId=user_id, eventId=event_id, registrationStatus="confirmed", ticketNumber=ticket_number)
         res = await db["registrations"].insert_one(new_reg.model_dump(by_alias=True, exclude_none=True))
         
-        # Create ticket in tickets collection
-        ticket_id_str = f"{str(event_id)[:6]}-{str(user_id)[:6]}-{random.randint(1000, 9999)}"
-        new_ticket = TicketModel(eventId=str(event_id), userId=str(user_id), ticketId=ticket_id_str)
-        await db["tickets"].insert_one(new_ticket.model_dump(by_alias=True, exclude_none=True))
+        # Create ticket in tickets collection — check for existing ticket first to prevent duplicates
+        existing_ticket = await db["tickets"].find_one({"userId": user_id, "eventId": event_id})
+        if not existing_ticket:
+            # Generate a URL-safe, unique, readable ticketId
+            # Format: EVT<6-char-event-prefix>-USR<6-char-user-prefix>-<4-digit-random>
+            event_prefix = str(event_id)[-6:].upper()
+            user_prefix = str(user_id)[-6:].upper()
+            random_suffix = random.randint(1000, 9999)
+            ticket_id_str = f"EVT{event_prefix}-USR{user_prefix}-{random_suffix}"
+            new_ticket = TicketModel(eventId=str(event_id), userId=str(user_id), ticketId=ticket_id_str)
+            await db["tickets"].insert_one(new_ticket.model_dump(by_alias=True, exclude_none=True))
 
         # Update event count
         await db["events"].update_one({"_id": ObjectId(event_id)}, {"$inc": {"registeredCount": 1}})
